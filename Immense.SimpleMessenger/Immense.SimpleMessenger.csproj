@@ -1,0 +1,42 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Authors>Jared Goodwin</Authors>
+    <Title>SimpleMessenger</Title>
+    <Description>A simple, lightweight event messenger that uses a ConditionalWeakTable internally.</Description>
+    <Copyright>(c) Immense Networks 2023</Copyright>
+    <PackageProjectUrl>https://github.com/immense/SimpleMessenger</PackageProjectUrl>
+    <PackageIcon>ImmyBot.png</PackageIcon>
+    <RepositoryUrl>https://github.com/immense/SimpleMessenger</RepositoryUrl>
+    <PackageTags>messenger;messaging;pub/sub;eventing;</PackageTags>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+	<Company>Immense Networks</Company>
+	<Version>1.0.0</Version>
+	<AssemblyVersion>$(Version)</AssemblyVersion>
+	<FileVersion>$(Version)</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\.assets\ImmyBot.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="ImmyBot.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
