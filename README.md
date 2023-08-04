@@ -20,7 +20,14 @@ services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
 
 public class MyService : IMyService
 {
+    private readonly IMessenger _messenger;
+
     public MyService(IMessenger messenger)
+    {
+        _messenger = messenger;
+    }
+
+    private async Task RegisterHandlers()
     {
         // Registers a handler under the default channel.
         // The handler will be removed automatically if
