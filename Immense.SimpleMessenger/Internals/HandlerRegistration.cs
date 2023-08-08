@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace Immense.SimpleMessenger.Internals;
 
-namespace Immense.SimpleMessenger.Internals;
 internal class HandlerRegistration<TMessageType, TChannelType> : IAsyncDisposable
     where TMessageType : class
     where TChannelType : IEquatable<TChannelType>

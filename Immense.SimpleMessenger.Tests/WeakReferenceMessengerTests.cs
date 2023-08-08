@@ -1,6 +1,3 @@
-using Immense.SimpleMessenger;
-using System.Diagnostics;
-
 namespace Immense.SimpleMessenger.Tests;
 
 [TestClass]
