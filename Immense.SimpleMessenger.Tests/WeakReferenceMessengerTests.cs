@@ -1,4 +1,5 @@
 using Immense.SimpleMessenger;
+using System.Diagnostics;
 
 namespace Immense.SimpleMessenger.Tests;
 
@@ -10,20 +11,20 @@ public class WeakReferenceMessengerTests
     {
         var messenger = new WeakReferenceMessenger();
         var count = 0;
-
+        
         await Task.Run(async () =>
         {
             var subscriber = new object();
-            await messenger.Register<CountObject>(subscriber, obj =>
+            var handler = await messenger.Register<CountObject>(subscriber, obj =>
             {
                 count += obj.Value;
                 return Task.CompletedTask;
             });
 
-            await messenger.Send(new CountObject(3));
+            _ = await messenger.Send(new CountObject(3));
             Assert.AreEqual(3, count);
 
-            await messenger.Send(new CountObject(7));
+            _ = await messenger.Send(new CountObject(7));
             Assert.AreEqual(10, count);
         });
 
@@ -44,16 +45,16 @@ public class WeakReferenceMessengerTests
         var count = 0;
 
         var subscriber = new object();
-        await messenger.Register<CountObject>(subscriber, obj =>
+        _ = await messenger.Register<CountObject>(subscriber, obj =>
         {
             count += obj.Value;
             return Task.CompletedTask;
         });
 
-        await messenger.Send(new CountObject(3));
+        _ = await messenger.Send(new CountObject(3));
         Assert.AreEqual(3, count);
 
-        await messenger.Send(new CountObject(7));
+        _ = await messenger.Send(new CountObject(7));
         Assert.AreEqual(10, count);
 
         await messenger.Unregister<CountObject>(subscriber);
@@ -82,39 +83,39 @@ public class WeakReferenceMessengerTests
         var subscriber2 = new object();
         var subscriber3 = new object();
 
-        await messenger.Register(subscriber1, channel1, (CountObject obj) =>
+        _ = await messenger.Register(subscriber1, channel1, (CountObject obj) =>
         {
             count1 += obj.Value;
             return Task.CompletedTask;
         });
 
         // Same subscriber, different channel.
-        await messenger.Register(subscriber1, channel2, (CountObject obj) =>
+        _ = await messenger.Register(subscriber1, channel2, (CountObject obj) =>
         {
             count2 += obj.Value;
             return Task.CompletedTask;
         });
 
         // Different subscriber, different channel.
-        await messenger.Register(subscriber2, channel3, (CountObject obj) =>
+        _ = await messenger.Register(subscriber2, channel3, (CountObject obj) =>
         {
             count3 += obj.Value;
             return Task.CompletedTask;
         });
 
         // Different subscriber, same channel.
-        await messenger.Register(subscriber3, channel1, (CountObject obj) =>
+        _ = await messenger.Register(subscriber3, channel1, (CountObject obj) =>
         {
             count4 += obj.Value;
             return Task.CompletedTask;
         });
 
         // Counts 1 and 4 should be affected.
-        await messenger.Send(new CountObject(3), channel1);
+        _ = await messenger.Send(new CountObject(3), channel1);
         // Count 2 should be affected.
-        await messenger.Send(new CountObject(5), channel2);
+        _ = await messenger.Send(new CountObject(5), channel2);
         // Count 3 should be affected.
-        await messenger.Send(new CountObject(7), channel3);
+        _ = await messenger.Send(new CountObject(7), channel3);
 
         Assert.AreEqual(3, count1);
         Assert.AreEqual(5, count2);
@@ -128,9 +129,13 @@ public class WeakReferenceMessengerTests
         var sendCount = 1_000;
         var messenger = new WeakReferenceMessenger();
         var count1 = 0;
+        var lock1 = new object();
         var count2 = 0;
+        var lock2 = new object();
         var count3 = 0;
+        var lock3 = new object();
         var count4 = 0;
+        var lock4 = new object();
 
         var channel1 = Guid.NewGuid();
         var channel2 = "channel2";
@@ -140,30 +145,42 @@ public class WeakReferenceMessengerTests
         var subscriber2 = new object();
         var subscriber3 = new object();
 
-        await messenger.Register(subscriber1, channel1, (CountObject obj) =>
+        _ = await messenger.Register(subscriber1, channel1, (CountObject obj) =>
         {
-            count1 += obj.Value;
+            lock (lock1)
+            {
+                count1 += obj.Value;
+            }
             return Task.CompletedTask;
         });
 
         // Same subscriber, different channel.
-        await messenger.Register(subscriber1, channel2, (CountObject obj) =>
+        _ = await messenger.Register(subscriber1, channel2, (CountObject obj) =>
         {
-            count2 += obj.Value;
+            lock (lock2)
+            {
+                count2 += obj.Value;
+            }
             return Task.CompletedTask;
         });
 
         // Different subscriber, different channel.
-        await messenger.Register(subscriber2, channel3, (CountObject obj) =>
+        _ = await messenger.Register(subscriber2, channel3, (CountObject obj) =>
         {
-            count3 += obj.Value;
+            lock (lock3)
+            {
+                count3 += obj.Value;
+            }
             return Task.CompletedTask;
         });
 
         // Different subscriber, same channel.
-        await messenger.Register(subscriber3, channel1, (CountObject obj) =>
+        _ = await messenger.Register(subscriber3, channel1, (CountObject obj) =>
         {
-            count4 += obj.Value;
+            lock (lock4)
+            {
+                count4 += obj.Value;
+            }
             return Task.CompletedTask;
         });
 
@@ -171,17 +188,70 @@ public class WeakReferenceMessengerTests
         await Parallel.ForEachAsync(range, async (i, ct) =>
         {
             // Counts 1 and 4 should be affected.
-            await messenger.Send(new CountObject(3), channel1);
+            _ = await messenger.Send(new CountObject(3), channel1, ct);
             // Count 2 should be affected.
-            await messenger.Send(new CountObject(5), channel2);
+            _ = await messenger.Send(new CountObject(5), channel2, ct);
             // Count 3 should be affected.
-            await messenger.Send(new CountObject(7), channel3);
+            _ = await messenger.Send(new CountObject(7), channel3, ct);
         });
 
         Assert.AreEqual(3 * sendCount, count1);
         Assert.AreEqual(5 * sendCount, count2);
         Assert.AreEqual(7 * sendCount, count3);
         Assert.AreEqual(3 * sendCount, count4);
+    }
+
+    [TestMethod]
+    public async Task Send_GivenCancellation_Throws()
+    {
+        var messenger = new WeakReferenceMessenger();
+        var channel = Guid.NewGuid();
+        var subscriber1 = new object();
+        var subscriber2 = new object();
+        var cts = new CancellationTokenSource();
+
+        _ = await messenger.Register(subscriber1, channel, (CountObject obj) =>
+        {
+            return Task.CompletedTask;
+        });
+        _ = await messenger.Register(subscriber2, channel, (CountObject obj) =>
+        {
+            return Task.CompletedTask;
+        });
+
+        cts.Cancel();
+        var task = messenger.Send(new CountObject(1), channel, cts.Token);
+
+        _ = await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        {
+            _ = await task;
+        });
+    }
+
+    [TestMethod]
+    public async Task Send_GivenRegistrationHandlerDisposed_DoesNotSend()
+    {
+        var messenger = new WeakReferenceMessenger();
+        var channel = Guid.NewGuid();
+        var subscriber = new object();
+        var cts = new CancellationTokenSource();
+        var count = 0;
+
+        var registration = await messenger.Register(subscriber, channel, (CountObject obj) =>
+        {
+            count += obj.Value;
+            return Task.CompletedTask;
+        });
+
+        _ = await messenger.Send(new CountObject(1), channel, cts.Token);
+
+        Assert.AreEqual(1, count);
+
+        await registration.DisposeAsync();
+
+        // Handler should be removed now, and count should be unchanged.
+        _ = await messenger.Send(new CountObject(1), channel, cts.Token);
+        Assert.AreEqual(1, count);
     }
 
     private class CountObject

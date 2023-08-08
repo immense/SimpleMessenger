@@ -1,12 +1,6 @@
 ﻿using Immense.SimpleMessenger.Internals;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Channels;
-using System.Threading.Tasks;
+using System.Collections.Immutable;
 
 namespace Immense.SimpleMessenger;
 
@@ -48,8 +42,8 @@ public interface IMessenger
     /// <param name="subscriber"></param>
     /// <param name="channel"></param>
     /// <param name="handler"></param>
-    /// <returns></returns>
-    Task Register<TMessageType, TChannelType>(
+    /// <returns>A disposable that, when disposed, will unregister the message handler.</returns>
+    Task<IAsyncDisposable> Register<TMessageType, TChannelType>(
         object subscriber,
         TChannelType channel,
         Func<TMessageType, Task> handler)
@@ -63,8 +57,8 @@ public interface IMessenger
     /// <typeparam name="TMessageType"></typeparam>
     /// <param name="subscriber"></param>
     /// <param name="handler"></param>
-    /// <returns></returns>
-    Task Register<TMessageType>(object subscriber, Func<TMessageType, Task> handler)
+    /// <returns>A disposable that, when disposed, will unregister the message handler.</returns>
+    Task<IAsyncDisposable> Register<TMessageType>(object subscriber, Func<TMessageType, Task> handler)
         where TMessageType : class;
 
     /// <summary>
@@ -75,7 +69,10 @@ public interface IMessenger
     /// <param name="message"></param>
     /// <param name="channel"></param>
     /// <returns>A list of exceptions, if any, that occurred while invoking the handlers.</returns>
-    Task<List<Exception>> Send<TMessageType, TChannelType>(TMessageType message, TChannelType channel)
+    Task<IImmutableList<Exception>> Send<TMessageType, TChannelType>(
+        TMessageType message, 
+        TChannelType channel,
+        CancellationToken cancellationToken = default)
         where TMessageType : class
         where TChannelType : IEquatable<TChannelType>;
 
@@ -85,7 +82,7 @@ public interface IMessenger
     /// <typeparam name="TMessageType"></typeparam>
     /// <param name="message"></param>
     /// <returns>A list of exceptions, if any, that occurred while invoking the handlers.</returns>
-    Task<List<Exception>> Send<TMessageType>(TMessageType message)
+    Task<IImmutableList<Exception>> Send<TMessageType>(TMessageType message)
         where TMessageType : class;
 
     /// <summary>
@@ -148,14 +145,14 @@ public class WeakReferenceMessenger : IMessenger
     }
 
     /// <inheritdoc />
-    public Task Register<TMessageType>(object subscriber, Func<TMessageType, Task> handler)
+    public Task<IAsyncDisposable> Register<TMessageType>(object subscriber, Func<TMessageType, Task> handler)
         where TMessageType : class
     {
         return Register(subscriber, DefaultChannel.Instance, handler);
     }
 
     /// <inheritdoc />
-    public async Task Register<TMessageType, TChannelType>(object subscriber, TChannelType channel, Func<TMessageType, Task> handler)
+    public async Task<IAsyncDisposable> Register<TMessageType, TChannelType>(object subscriber, TChannelType channel, Func<TMessageType, Task> handler)
         where TMessageType : class
         where TChannelType : IEquatable<TChannelType>
     {
@@ -172,6 +169,7 @@ public class WeakReferenceMessenger : IMessenger
             }
 
             await table.AddOrUpdate(subscriber, handler);
+            return new HandlerRegistration<TMessageType, TChannelType>(table, subscriber);
         }
         finally
         {
@@ -180,41 +178,37 @@ public class WeakReferenceMessenger : IMessenger
     }
 
     /// <inheritdoc />
-    public Task<List<Exception>> Send<TMessageType>(TMessageType message)
+    public Task<IImmutableList<Exception>> Send<TMessageType>(TMessageType message)
         where TMessageType : class
     {
         return Send(message, DefaultChannel.Instance);
     }
 
     /// <inheritdoc />
-    public async Task<List<Exception>> Send<TMessageType, TChannelType>(TMessageType message, TChannelType channel)
+    public async Task<IImmutableList<Exception>> Send<TMessageType, TChannelType>(
+        TMessageType message, 
+        TChannelType channel,
+        CancellationToken cancellationToken = default)
         where TMessageType : class
         where TChannelType : IEquatable<TChannelType>
     {
-        await _subscribersLock.WaitAsync();
-        try
-        {
-            var table = GetWeakReferenceTable<TMessageType, TChannelType>(channel);
-            var handlers = await table.GetHandlers<TMessageType>();
-            var exceptions = new List<Exception>();
+        var handlers = await GetHandlers<TMessageType, TChannelType>(channel);
+        var exceptions = new List<Exception>();
 
-            foreach (var handler in handlers)
-            {
-                try
-                {
-                    await handler.Invoke(message);
-                }
-                catch (Exception ex)
-                {
-                    exceptions.Add(ex);
-                }
-            }
-            return exceptions;
-        }
-        finally
+        foreach (var handler in handlers)
         {
-            _subscribersLock.Release();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                await handler.Invoke(message);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
         }
+        return exceptions.ToImmutableList();
     }
 
     /// <inheritdoc />
@@ -234,6 +228,22 @@ public class WeakReferenceMessenger : IMessenger
         {
             var table = GetWeakReferenceTable<TMessageType, TChannelType>(channel);
             await table.Remove(subscriber);
+        }
+        finally
+        {
+            _subscribersLock.Release();
+        }
+    }
+
+    private async Task<IEnumerable<Func<TMessageType, Task>>> GetHandlers<TMessageType, TChannelType>(TChannelType channel)
+        where TMessageType : class
+        where TChannelType : IEquatable<TChannelType>
+    {
+        await _subscribersLock.WaitAsync();
+        try
+        {
+            var table = GetWeakReferenceTable<TMessageType, TChannelType>(channel);
+            return await table.GetHandlers<TMessageType>();
         }
         finally
         {
