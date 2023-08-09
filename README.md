@@ -18,21 +18,27 @@ services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
 ``` C#
 // MyService.cs
 
-public class MyService : IMyService
+public class MyService : IMyService, IAsyncDisposable
 {
     private readonly IMessenger _messenger;
+    private readonly Task<IAsyncDisposable> _messengerRegistration;
 
     public MyService(IMessenger messenger)
     {
         _messenger = messenger;
-    }
 
-    private async Task RegisterHandlers()
-    {
         // Registers a handler under the default channel.
         // The handler will be removed automatically if
         // this MyService instance is garbage-collected.
-        messenger.Register<SomeMessageType>(this, MyHandler);
+        // Or it can be removed manually by disposing of the return
+        // value of the Register method.
+        _messengerRegistration = messenger.Register<SomeMessageType>(this, MyHandler);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        var disposable = await _messengerRegistration;
+        await disposable.DisposeAsync();
     }
 
     private async Task MyHandler(SomeMessageType message)
