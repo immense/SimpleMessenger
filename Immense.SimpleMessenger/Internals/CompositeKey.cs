@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Immense.SimpleMessenger.Internals;
+﻿namespace Immense.SimpleMessenger.Internals;
 
 /// <summary>
 /// A dictionary key composed of the message type and channel type.
