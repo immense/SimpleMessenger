@@ -18,10 +18,10 @@ services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
 ``` C#
 // MyService.cs
 
-public class MyService : IMyService, IAsyncDisposable
+public class MyService : IMyService, IDisposable
 {
     private readonly IMessenger _messenger;
-    private readonly Task<IAsyncDisposable> _messengerRegistration;
+    private readonly IDisposable _messengerRegistration;
 
     public MyService(IMessenger messenger)
     {
@@ -35,13 +35,12 @@ public class MyService : IMyService, IAsyncDisposable
         _messengerRegistration = messenger.Register<SomeMessageType>(this, MyHandler);
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        var disposable = await _messengerRegistration;
-        await disposable.DisposeAsync();
+        _messengerRegistration.Dispose();
     }
 
-    private async Task MyHandler(SomeMessageType message)
+    private async Task MyHandler(object subscriber, SomeMessageType message)
     {
         // Handle the message.
     }
